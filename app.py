@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import csv
+import plotly.express as px
 
 st.set_page_config(layout="wide")
-st.title("📊 Relatório de Jogos - Cassino")
+st.title("📊 Dashboard de Jogos - Cassino")
 
 # --- Sessão para arquivos e dados ---
 if "arquivos_enviados" not in st.session_state:
@@ -13,12 +14,11 @@ if "df_processado" not in st.session_state:
 if "resumo_hora" not in st.session_state:
     st.session_state.resumo_hora = None
 
-# --- Função segura para limpar valores monetários ---
+# --- Função para limpar valores monetários ---
 def limpar_valor_seguro(x):
     if pd.isna(x):
         return 0
-    x = str(x).replace('R$', '').replace(' ', '').strip()
-    x = x.replace(',', '.')
+    x = str(x).replace('R$', '').replace(' ', '').strip().replace('.', '').replace(',', '.')
     try:
         return float(x)
     except:
@@ -49,8 +49,8 @@ if st.session_state.arquivos_enviados:
         st.success("Arquivo removido")
         st.experimental_rerun()
 
-# --- Botão para gerar relatório ---
-if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") or st.session_state.df_processado is not None):
+# --- Gerar relatório ---
+if st.session_state.arquivos_enviados and (st.button("Gerar Dashboard") or st.session_state.df_processado is not None):
     if st.session_state.df_processado is None:
         todos_dados = []
         for arquivo, jogo in st.session_state.arquivos_enviados:
@@ -72,8 +72,7 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
             # Padroniza colunas
             data.columns = ["Client_ID", "Nome", "Sobrenome", "Data_Hora", "Quant", "Gastos", "Ganhos", "Resultado"]
 
-            # Limpar valores monetários
-            for col in ['Gastos', 'Ganhos', 'Resultado']:
+            for col in ['Gastos','Ganhos','Resultado']:
                 data[col] = data[col].apply(limpar_valor_seguro)
 
             data['Quant'] = pd.to_numeric(data['Quant'], errors='coerce').fillna(0)
@@ -85,116 +84,72 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
             df = pd.concat(todos_dados, ignore_index=True)
             df['Hora'] = df['Data_Hora'].dt.floor('H')
             df['Intervalo'] = df['Hora'].dt.strftime('%H:%M') + " - " + (df['Hora'] + pd.Timedelta(hours=1)).dt.strftime('%H:%M')
-            resumo_hora = df.groupby(['Jogo', 'Intervalo']).agg({
+            resumo_hora = df.groupby(['Jogo','Intervalo']).agg({
                 'Quant':'sum',
                 'Gastos':'sum',
                 'Ganhos':'sum',
                 'Resultado':'sum'
             }).reset_index()
-            resumo_hora['RTP_%'] = (resumo_hora['Ganhos'] / resumo_hora['Gastos'] * 100).round(2)
-            resumo_hora['RTP_%'] = resumo_hora['RTP_%'].astype(str) + '%'
+            resumo_hora['RTP_%'] = (resumo_hora['Ganhos']/resumo_hora['Gastos']*100).round(2)
             resumo_hora['Resultado_num'] = resumo_hora['Resultado'].copy()
 
-            # Salva em session_state
             st.session_state.df_processado = df
             st.session_state.resumo_hora = resumo_hora
     else:
         df = st.session_state.df_processado
         resumo_hora = st.session_state.resumo_hora
 
-    # --- Mostrar resumo por hora ---
+    st.subheader("📊 Resumo por Hora e Jogo")
     resumo_hora_display = resumo_hora.copy()
-    for col in ['Gastos', 'Ganhos', 'Resultado']:
+    for col in ['Gastos','Ganhos','Resultado']:
         resumo_hora_display[col] = resumo_hora_display[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
 
     def color_result(val, val_num):
-        if val_num > 0:
-            return 'color: green'
-        elif val_num < 0:
-            return 'color: red'
-        else:
-            return ''
+        if val_num > 0: return 'color: green'
+        elif val_num < 0: return 'color: red'
+        else: return ''
 
-    st.subheader("📅 Resumo por Hora e Jogo")
-    st.dataframe(
-        resumo_hora_display.style.set_table_styles(
-            [{'selector': 'td', 'props': [('font-size', '12px')]},
-             {'selector': 'th', 'props': [('font-size', '12px')]}]
-        ).apply(
-            lambda x: [color_result(v, resumo_hora['Resultado_num'].iloc[i]) for i, v in enumerate(x)],
-            subset=['Resultado']
-        ),
+    st.dataframe(resumo_hora_display.style.set_table_styles(
+        [{'selector': 'td','props':[('font-size','12px')]},
+         {'selector': 'th','props':[('font-size','12px')]}]
+    ).apply(lambda x: [color_result(v,resumo_hora['Resultado_num'].iloc[i]) for i,v in enumerate(x)], subset=['Resultado']),
         use_container_width=True
     )
 
-    # --- Visualizar maior prejuízo com RTP incluso ---
-    prejuizo = resumo_hora[resumo_hora['Resultado_num'] < 0].copy()
+    # --- Visualizar maior prejuízo com gráficos ---
+    prejuizo = resumo_hora[resumo_hora['Resultado_num']<0].copy()
     if not prejuizo.empty:
-        opcao_prejuizo = st.radio("Visualizar prejuízo por:", ["Intervalos", "Total do dia"], index=0)
-
-        st.subheader("🔥 Jogos e Intervalos com Maior Prejuízo")
+        opcao_prejuizo = st.radio("Visualizar prejuízo por:", ["Intervalos","Total do dia"], index=0)
+        st.subheader("🔥 Jogos com Maior Prejuízo")
 
         if opcao_prejuizo == "Intervalos":
-            prejuizo = prejuizo.sort_values('Resultado_num')
-            for _, row in prejuizo.iterrows():
-                st.markdown(f"<span style='font-size:14px'>### {row['Jogo']} - {row['Intervalo']}</span>", unsafe_allow_html=True)
-                st.metric(label="Lucro negativo", value=f"R${-row['Resultado_num']:,.2f}".replace('.', ','))
-                st.metric(label="RTP", value=row['RTP_%'])
-
-                interval_data = df[(df['Jogo']==row['Jogo']) & (df['Intervalo']==row['Intervalo'])]
-                jogadores_prejuizo = interval_data[interval_data['Resultado']<0].groupby(
-                    ['Client_ID','Nome','Sobrenome']
-                ).agg({
-                    'Quant':'sum',
-                    'Gastos':'sum',
-                    'Ganhos':'sum',
-                    'Resultado':'sum'
-                }).reset_index()
-
-                for col in ['Gastos','Ganhos','Resultado']:
-                    jogadores_prejuizo[col] = jogadores_prejuizo[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-
-                jogadores_prejuizo.rename(columns={'Quant':'Rodadas'}, inplace=True)
-
-                with st.expander("Ver jogadores que contribuíram para o prejuízo"):
-                    st.dataframe(jogadores_prejuizo.style.set_table_styles(
-                        [{'selector': 'td', 'props': [('font-size', '12px')]},
-                         {'selector': 'th', 'props': [('font-size', '12px')]}]
-                    ))
-
-        elif opcao_prejuizo == "Total do dia":
+            fig = px.bar(prejuizo, x='Intervalo', y='Resultado_num', color='Jogo',
+                         title='Prejuízo por Intervalo', text='Resultado_num', labels={'Resultado_num':'Lucro negativo'})
+            st.plotly_chart(fig, use_container_width=True)
+        else:
             prejuizo_total = df.groupby('Jogo').agg({
                 'Quant':'sum',
                 'Gastos':'sum',
                 'Ganhos':'sum',
                 'Resultado':'sum'
             }).reset_index()
-            prejuizo_total['RTP_%'] = (prejuizo_total['Ganhos'] / prejuizo_total['Gastos'] * 100).round(2).astype(str) + '%'
+            prejuizo_total['RTP_%'] = (prejuizo_total['Ganhos']/prejuizo_total['Gastos']*100).round(2)
             prejuizo_total = prejuizo_total[prejuizo_total['Resultado']<0].sort_values('Resultado')
+            fig = px.bar(prejuizo_total, x='Jogo', y='Resultado', color='Jogo',
+                         title='Prejuízo Total do Dia', text='Resultado', labels={'Resultado':'Lucro negativo'})
+            st.plotly_chart(fig, use_container_width=True)
 
-            for _, row in prejuizo_total.iterrows():
-                st.markdown(f"<span style='font-size:14px'>### {row['Jogo']}</span>", unsafe_allow_html=True)
-                st.metric(label="Lucro negativo total do dia", value=f"R${-row['Resultado']:,.2f}".replace('.', ','))
-                st.metric(label="RTP", value=row['RTP_%'])
-
-                jogadores_prejuizo = df[(df['Jogo']==row['Jogo']) & (df['Resultado']<0)].groupby(
-                    ['Client_ID','Nome','Sobrenome']
-                ).agg({
-                    'Quant':'sum',
-                    'Gastos':'sum',
-                    'Ganhos':'sum',
-                    'Resultado':'sum'
-                }).reset_index()
-
-                for col in ['Gastos','Ganhos','Resultado']:
-                    jogadores_prejuizo[col] = jogadores_prejuizo[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-
-                jogadores_prejuizo.rename(columns={'Quant':'Rodadas'}, inplace=True)
-
-                with st.expander("Ver jogadores que contribuíram para o prejuízo"):
-                    st.dataframe(jogadores_prejuizo.style.set_table_styles(
-                        [{'selector': 'td', 'props': [('font-size', '12px')]},
-                         {'selector': 'th', 'props': [('font-size', '12px')]}]
-                    ))
+        # --- Ranking de jogadores que deram prejuízo ---
+        st.subheader("🏆 Jogadores que mais contribuíram para prejuízo")
+        jogadores_prejuizo = df[df['Resultado']<0].groupby(
+            ['Jogo','Client_ID','Nome','Sobrenome']
+        ).agg({'Quant':'sum','Gastos':'sum','Ganhos':'sum','Resultado':'sum'}).reset_index()
+        for col in ['Gastos','Ganhos','Resultado']:
+            jogadores_prejuizo[col] = jogadores_prejuizo[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+        jogadores_prejuizo.rename(columns={'Quant':'Rodadas'}, inplace=True)
+        st.dataframe(jogadores_prejuizo.style.set_table_styles(
+            [{'selector': 'td','props':[('font-size','12px')]},
+             {'selector': 'th','props':[('font-size','12px')]}]
+        ))
     else:
         st.info("Nenhum prejuízo identificado.")
