@@ -73,14 +73,24 @@ if st.session_state.arquivos_enviados:
                 'Ganhos':'sum',
                 'Resultado':'sum'
             }).reset_index()
-            resumo_hora['RTP_%'] = resumo_hora['Ganhos'] / resumo_hora['Gastos'] * 100
             
-            # Formatação de valores
+            # RTP em porcentagem
+            resumo_hora['RTP_%'] = (resumo_hora['Ganhos'] / resumo_hora['Gastos'] * 100).round(2)
+            resumo_hora['RTP_%'] = resumo_hora['RTP_%'].astype(str) + "%"
+            
+            # Formatar valores monetários
             for col in ['Gastos', 'Ganhos', 'Resultado']:
                 resumo_hora[col] = resumo_hora[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
             
+            # Função para colorir resultado
+            def color_result(val):
+                if 'R$' in val:
+                    num = float(val.replace('R$', '').replace('.', '').replace(',', '.'))
+                    return 'color: green' if num > 0 else 'color: red' if num < 0 else ''
+                return ''
+            
             st.subheader("📅 Resumo por Hora e Jogo")
-            st.dataframe(resumo_hora, use_container_width=True)
+            st.dataframe(resumo_hora.style.applymap(color_result, subset=['Resultado']), use_container_width=True)
             
             # Destacar jogos e horários com maior prejuízo
             resumo_hora['Resultado_num'] = df.groupby(['Jogo', 'Intervalo'])['Resultado'].sum().values
