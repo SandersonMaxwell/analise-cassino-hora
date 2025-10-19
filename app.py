@@ -13,6 +13,17 @@ if "df_processado" not in st.session_state:
 if "resumo_hora" not in st.session_state:
     st.session_state.resumo_hora = None
 
+# --- Função segura para limpar valores monetários ---
+def limpar_valor(x):
+    if pd.isna(x):
+        return 0
+    x = str(x).replace('R$', '').strip()
+    x = x.replace('.', '').replace(',', '.')
+    try:
+        return float(x)
+    except:
+        return 0
+
 # --- Upload de CSV individual ---
 uploaded_file = st.file_uploader("Escolha um arquivo CSV", type="csv")
 
@@ -39,7 +50,7 @@ if st.session_state.arquivos_enviados:
         st.experimental_rerun()
 
 # --- Botão para gerar relatório ---
-if st.button("Gerar Relatório Final") or st.session_state.df_processado is not None:
+if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") or st.session_state.df_processado is not None):
     if st.session_state.df_processado is None:
         todos_dados = []
         for arquivo, jogo in st.session_state.arquivos_enviados:
@@ -61,16 +72,9 @@ if st.button("Gerar Relatório Final") or st.session_state.df_processado is not 
             # Padroniza colunas
             data.columns = ["Client_ID", "Nome", "Sobrenome", "Data_Hora", "Quant", "Gastos", "Ganhos", "Resultado"]
 
-            # Limpar valores monetários
+            # Limpar valores monetários com função segura
             for col in ['Gastos', 'Ganhos', 'Resultado']:
-                data[col] = pd.to_numeric(
-                    data[col].astype(str)
-                        .str.replace('R$', '', regex=False)
-                        .str.replace('.', '', regex=False)
-                        .str.replace(',', '.', regex=False)
-                        .str.strip(),
-                    errors='coerce'
-                )
+                data[col] = data[col].apply(limpar_valor)
 
             data['Quant'] = pd.to_numeric(data['Quant'], errors='coerce').fillna(0)
             data['Data_Hora'] = pd.to_datetime(data['Data_Hora'], errors='coerce')
