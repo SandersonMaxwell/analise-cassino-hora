@@ -124,10 +124,23 @@ if st.session_state.arquivos_enviados:
                     st.markdown(f"### {row['Jogo']} - {row['Intervalo']}")
                     st.metric(label="Lucro negativo", value=f"R${-row['Resultado_num']:,.2f}".replace('.', ','))
                     
-                    # Mostrar jogadores que contribuíram
+                    # Mostrar jogadores que contribuíram, agora com rodadas
                     interval_data = df[(df['Jogo']==row['Jogo']) & (df['Intervalo']==row['Intervalo'])]
-                    jogadores_prejuizo = interval_data[interval_data['Resultado']<0][['Client_ID','Nome','Sobrenome','Resultado']]
-                    jogadores_prejuizo['Resultado'] = jogadores_prejuizo['Resultado'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+                    jogadores_prejuizo = interval_data[interval_data['Resultado']<0].groupby(
+                        ['Client_ID','Nome','Sobrenome']
+                    ).agg({
+                        'Quant':'sum',    # total de rodadas
+                        'Gastos':'sum',
+                        'Ganhos':'sum',
+                        'Resultado':'sum'
+                    }).reset_index()
+                    
+                    # Formatar valores monetários
+                    for col in ['Gastos','Ganhos','Resultado']:
+                        jogadores_prejuizo[col] = jogadores_prejuizo[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+                    
+                    # Renomear Quant para Rodadas
+                    jogadores_prejuizo.rename(columns={'Quant':'Rodadas'}, inplace=True)
                     
                     with st.expander("Ver jogadores que contribuíram para o prejuízo"):
                         st.dataframe(jogadores_prejuizo)
