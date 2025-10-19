@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 
-st.title("Análise de Jogos - Cassino")
+st.set_page_config(layout="wide")
+st.title("📊 Relatório de Jogos - Cassino")
 
-# Inicializa lista de arquivos enviados no session_state
+# Inicializa lista de arquivos enviados
 if "arquivos_enviados" not in st.session_state:
     st.session_state.arquivos_enviados = []
 
@@ -14,19 +15,19 @@ if uploaded_file:
     nome_jogo = st.text_input("Digite o nome do jogo", key=f"nome_jogo_{uploaded_file.name}")
     
     if st.button(f"Adicionar CSV: {uploaded_file.name}") and nome_jogo:
-        # Adiciona ao session_state apenas se não estiver na lista
         st.session_state.arquivos_enviados.append((uploaded_file, nome_jogo))
-        st.success(f"{uploaded_file.name} adicionado à lista!")
-        
-# Mostra lista de arquivos enviados
+        st.success(f"{uploaded_file.name} adicionado!")
+
+# Mostra arquivos adicionados
 if st.session_state.arquivos_enviados:
     st.subheader("Arquivos enviados:")
     for f, jogo in st.session_state.arquivos_enviados:
         st.write(f"- {f.name} -> {jogo}")
-    
-    if st.button("Processar todos os arquivos"):
+
+    if st.button("Gerar Relatório Final"):
         todos_dados = []
         
+        # Processar cada CSV
         for arquivo, jogo in st.session_state.arquivos_enviados:
             try:
                 data = pd.read_csv(arquivo, sep=None, engine='python', header=0)
@@ -74,25 +75,33 @@ if st.session_state.arquivos_enviados:
             }).reset_index()
             resumo_hora['RTP_%'] = resumo_hora['Ganhos'] / resumo_hora['Gastos'] * 100
             
-            st.subheader("Resumo por Hora e Jogo")
-            resumo_hora_display = resumo_hora.copy()
+            # Formatação de valores
             for col in ['Gastos', 'Ganhos', 'Resultado']:
-                resumo_hora_display[col] = resumo_hora_display[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-            st.dataframe(resumo_hora_display)
+                resumo_hora[col] = resumo_hora[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
             
-            # Análise total – apenas prejuízo
-            prejuizo = resumo_hora[resumo_hora['Resultado'] < 0].copy()
+            st.subheader("📅 Resumo por Hora e Jogo")
+            st.dataframe(resumo_hora, use_container_width=True)
+            
+            # Destacar jogos e horários com maior prejuízo
+            resumo_hora['Resultado_num'] = df.groupby(['Jogo', 'Intervalo'])['Resultado'].sum().values
+            prejuizo = resumo_hora[resumo_hora['Resultado_num'] < 0].copy()
+            
             if not prejuizo.empty:
-                st.subheader("Análise Total - Prejuízo por Jogo e Intervalo")
-                prejuizo_display = prejuizo.copy()
-                prejuizo_display['Gastos'] = prejuizo_display['Gastos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-                prejuizo_display['Ganhos'] = prejuizo_display['Ganhos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-                prejuizo_display['Resultado'] = prejuizo_display['Resultado'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-                prejuizo_display = prejuizo_display.rename(columns={
-                    'Gastos': 'Total Apostado',
-                    'Ganhos': 'Payout',
-                    'Resultado': 'Lucro'
-                })
-                st.dataframe(prejuizo_display)
+                st.subheader("🔥 Jogos e Intervalos com Maior Prejuízo")
+                
+                # Ordenar por maior prejuízo
+                prejuizo = prejuizo.sort_values('Resultado_num')
+                
+                for _, row in prejuizo.iterrows():
+                    st.markdown(f"### {row['Jogo']} - {row['Intervalo']}")
+                    st.metric(label="Lucro negativo", value=f"R${-row['Resultado_num']:,.2f}".replace('.', ','))
+                    
+                    # Mostrar jogadores que contribuíram
+                    interval_data = df[(df['Jogo']==row['Jogo']) & (df['Intervalo']==row['Intervalo'])]
+                    jogadores_prejuizo = interval_data[interval_data['Resultado']<0][['Client_ID','Nome','Sobrenome','Resultado']]
+                    jogadores_prejuizo['Resultado'] = jogadores_prejuizo['Resultado'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+                    
+                    with st.expander("Ver jogadores que contribuíram para o prejuízo"):
+                        st.dataframe(jogadores_prejuizo)
             else:
                 st.info("Nenhum prejuízo identificado.")
