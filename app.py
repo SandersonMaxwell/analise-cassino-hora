@@ -14,11 +14,15 @@ if "resumo_hora" not in st.session_state:
     st.session_state.resumo_hora = None
 
 # --- Função segura para limpar valores monetários ---
-def limpar_valor(x):
+def limpar_valor_seguro(x):
+    """
+    Limpa valores monetários como 'R$ 1.234,56' ou 'R$123,45' e retorna float.
+    Funciona mesmo que venha com sinal negativo.
+    """
     if pd.isna(x):
         return 0
-    x = str(x).replace('R$', '').strip()
-    x = x.replace('.', '').replace(',', '.')
+    x = str(x).replace('R$', '').replace(' ', '').strip()
+    x = x.replace(',', '.')
     try:
         return float(x)
     except:
@@ -74,7 +78,7 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
 
             # Limpar valores monetários com função segura
             for col in ['Gastos', 'Ganhos', 'Resultado']:
-                data[col] = data[col].apply(limpar_valor)
+                data[col] = data[col].apply(limpar_valor_seguro)
 
             data['Quant'] = pd.to_numeric(data['Quant'], errors='coerce').fillna(0)
             data['Data_Hora'] = pd.to_datetime(data['Data_Hora'], errors='coerce')
