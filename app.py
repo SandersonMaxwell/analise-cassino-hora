@@ -3,15 +3,17 @@ import pandas as pd
 
 st.title("Análise de Jogos - Cassino")
 
-# Lista para acumular todos os dados
-todos_dados = []
+# Inicializa lista de dados acumulados no session_state
+if "todos_dados" not in st.session_state:
+    st.session_state.todos_dados = []
 
+# Upload de CSV individual
 uploaded_file = st.file_uploader("Escolha um arquivo CSV", type="csv")
 
 if uploaded_file:
     nome_jogo = st.text_input("Digite o nome do jogo", key=f"nome_jogo_{uploaded_file.name}")
     
-    if nome_jogo:
+    if st.button(f"Adicionar CSV: {uploaded_file.name}") and nome_jogo:
         try:
             data = pd.read_csv(uploaded_file, sep=None, engine='python', header=0)
         except Exception as e:
@@ -38,12 +40,13 @@ if uploaded_file:
             data['Data_Hora'] = pd.to_datetime(data['Data_Hora'], errors='coerce')
             data['Jogo'] = nome_jogo
             
-            # Adiciona ao DataFrame acumulado
-            todos_dados.append(data)
-
-# --- Processar análise se houver dados ---
-if todos_dados:
-    df = pd.concat(todos_dados, ignore_index=True)
+            # Adiciona ao session_state
+            st.session_state.todos_dados.append(data)
+            st.success(f"{uploaded_file.name} adicionado com sucesso!")
+            
+# Processa análise se houver dados
+if st.session_state.todos_dados:
+    df = pd.concat(st.session_state.todos_dados, ignore_index=True)
     
     # Criar coluna de intervalo simplificado
     df['Hora'] = df['Data_Hora'].dt.floor('H')
