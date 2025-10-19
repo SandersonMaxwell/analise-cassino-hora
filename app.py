@@ -3,27 +3,27 @@ import pandas as pd
 
 st.title("Análise de Jogos - Cassino")
 
-# Upload de 1 CSV por vez
+# Lista para acumular todos os dados
+todos_dados = []
+
 uploaded_file = st.file_uploader("Escolha um arquivo CSV", type="csv")
 
 if uploaded_file:
-    # Solicitar nome do jogo
-    nome_jogo = st.text_input("Digite o nome do jogo", key="nome_jogo")
+    nome_jogo = st.text_input("Digite o nome do jogo", key=f"nome_jogo_{uploaded_file.name}")
     
     if nome_jogo:
-        # Lê CSV
         try:
             data = pd.read_csv(uploaded_file, sep=None, engine='python', header=0)
         except Exception as e:
-            st.error(f"Erro ao ler o CSV: {e}")
+            st.error(f"Erro ao ler CSV: {e}")
         
         if data.shape[1] != 8:
             st.error(f"O CSV deve ter 8 colunas. Encontradas: {data.shape[1]}")
         else:
-            # Renomear colunas para padrão
+            # Renomear colunas
             data.columns = ["Client_ID", "Nome", "Sobrenome", "Data_Hora", "Quant", "Gastos", "Ganhos", "Resultado"]
             
-            # Limpar valores monetários e converter para numérico
+            # Limpar valores monetários
             for col in ['Gastos', 'Ganhos', 'Resultado']:
                 data[col] = pd.to_numeric(
                     data[col].astype(str)
@@ -34,52 +34,50 @@ if uploaded_file:
                     errors='coerce'
                 )
             
-            # Quantidade de apostas
             data['Quant'] = pd.to_numeric(data['Quant'], errors='coerce').fillna(0)
-            
-            # Converter Data_Hora
             data['Data_Hora'] = pd.to_datetime(data['Data_Hora'], errors='coerce')
-            
-            # Adicionar coluna do jogo
             data['Jogo'] = nome_jogo
             
-            # --- Resumo por hora ---
-            data['Hora'] = data['Data_Hora'].dt.floor('H')  # arredonda para hora
-            resumo_hora = data.groupby('Hora').agg({
-                'Gastos':'sum',
-                'Ganhos':'sum',
-                'Resultado':'sum'
-            }).reset_index()
-            
-            # RTP por hora
-            resumo_hora['RTP_%'] = resumo_hora['Ganhos'] / resumo_hora['Gastos'] * 100
-            
-            st.subheader(f"Resumo por Hora - {nome_jogo}")
-            
-            # Formatar valores como R$
-            resumo_hora_display = resumo_hora.copy()
-            resumo_hora_display['Gastos'] = resumo_hora_display['Gastos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-            resumo_hora_display['Ganhos'] = resumo_hora_display['Ganhos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-            resumo_hora_display['Resultado'] = resumo_hora_display['Resultado'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-            
-            st.dataframe(resumo_hora_display)
-            
-            # --- Análise total mostrando apenas prejuízo ---
-            prejuizo = resumo_hora[resumo_hora['Resultado'] < 0].copy()
-            
-            if not prejuizo.empty:
-                st.subheader("Análise Total - Prejuízo")
-                prejuizo_display = prejuizo.copy()
-                prejuizo_display['Gastos'] = prejuizo_display['Gastos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-                prejuizo_display['Ganhos'] = prejuizo_display['Ganhos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-                prejuizo_display['Resultado'] = prejuizo_display['Resultado'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
-                
-                prejuizo_display = prejuizo_display.rename(columns={
-                    'Gastos': 'Total Apostado',
-                    'Ganhos': 'Payout',
-                    'Resultado': 'Lucro'
-                })
-                
-                st.dataframe(prejuizo_display)
-            else:
-                st.info("Nenhum prejuízo identificado neste jogo.")
+            # Adiciona ao DataFrame acumulado
+            todos_dados.append(data)
+
+# --- Processar análise se houver dados ---
+if todos_dados:
+    df = pd.concat(todos_dados, ignore_index=True)
+    
+    # Criar coluna de intervalo simplificado
+    df['Hora'] = df['Data_Hora'].dt.floor('H')
+    df['Intervalo'] = df['Hora'].dt.strftime('%H:%M') + " - " + (df['Hora'] + pd.Timedelta(hours=1)).dt.strftime('%H:%M')
+    
+    # Resumo por jogo e intervalo
+    resumo_hora = df.groupby(['Jogo', 'Intervalo']).agg({
+        'Quant':'sum',
+        'Gastos':'sum',
+        'Ganhos':'sum',
+        'Resultado':'sum'
+    }).reset_index()
+    
+    resumo_hora['RTP_%'] = resumo_hora['Ganhos'] / resumo_hora['Gastos'] * 100
+    
+    st.subheader("Resumo por Hora e Jogo")
+    resumo_hora_display = resumo_hora.copy()
+    for col in ['Gastos', 'Ganhos', 'Resultado']:
+        resumo_hora_display[col] = resumo_hora_display[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+    st.dataframe(resumo_hora_display)
+    
+    # Análise total – apenas prejuízo
+    prejuizo = resumo_hora[resumo_hora['Resultado'] < 0].copy()
+    if not prejuizo.empty:
+        st.subheader("Análise Total - Prejuízo por Jogo e Intervalo")
+        prejuizo_display = prejuizo.copy()
+        prejuizo_display['Gastos'] = prejuizo_display['Gastos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+        prejuizo_display['Ganhos'] = prejuizo_display['Ganhos'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+        prejuizo_display['Resultado'] = prejuizo_display['Resultado'].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
+        prejuizo_display = prejuizo_display.rename(columns={
+            'Gastos': 'Total Apostado',
+            'Ganhos': 'Payout',
+            'Resultado': 'Lucro'
+        })
+        st.dataframe(prejuizo_display)
+    else:
+        st.info("Nenhum prejuízo identificado.")
