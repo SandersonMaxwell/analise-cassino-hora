@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import csv
 
 st.set_page_config(layout="wide")
 st.title("📊 Relatório de Jogos - Cassino")
@@ -30,7 +31,14 @@ if st.session_state.arquivos_enviados:
         # Processar cada CSV
         for arquivo, jogo in st.session_state.arquivos_enviados:
             try:
-                data = pd.read_csv(arquivo, sep=None, engine='python', header=0)
+                # Detectar delimitador automaticamente
+                arquivo.seek(0)
+                sample = arquivo.read(1024).decode('utf-8')
+                arquivo.seek(0)
+                dialect = csv.Sniffer().sniff(sample, delimiters=";,")
+                sep = dialect.delimiter
+                
+                data = pd.read_csv(arquivo, sep=sep, engine='python', header=0)
             except Exception as e:
                 st.error(f"Erro ao ler {arquivo.name}: {e}")
                 continue
