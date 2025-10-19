@@ -15,10 +15,6 @@ if "resumo_hora" not in st.session_state:
 
 # --- Função segura para limpar valores monetários ---
 def limpar_valor_seguro(x):
-    """
-    Limpa valores monetários como 'R$ 1.234,56' ou 'R$123,45' e retorna float.
-    Funciona mesmo que venha com sinal negativo.
-    """
     if pd.isna(x):
         return 0
     x = str(x).replace('R$', '').replace(' ', '').strip()
@@ -76,7 +72,7 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
             # Padroniza colunas
             data.columns = ["Client_ID", "Nome", "Sobrenome", "Data_Hora", "Quant", "Gastos", "Ganhos", "Resultado"]
 
-            # Limpar valores monetários com função segura
+            # Limpar valores monetários
             for col in ['Gastos', 'Ganhos', 'Resultado']:
                 data[col] = data[col].apply(limpar_valor_seguro)
 
@@ -131,7 +127,7 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
         use_container_width=True
     )
 
-    # --- Visualizar maior prejuízo ---
+    # --- Visualizar maior prejuízo com RTP incluso ---
     prejuizo = resumo_hora[resumo_hora['Resultado_num'] < 0].copy()
     if not prejuizo.empty:
         opcao_prejuizo = st.radio("Visualizar prejuízo por:", ["Intervalos", "Total do dia"], index=0)
@@ -143,6 +139,7 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
             for _, row in prejuizo.iterrows():
                 st.markdown(f"<span style='font-size:14px'>### {row['Jogo']} - {row['Intervalo']}</span>", unsafe_allow_html=True)
                 st.metric(label="Lucro negativo", value=f"R${-row['Resultado_num']:,.2f}".replace('.', ','))
+                st.metric(label="RTP", value=row['RTP_%'])
 
                 interval_data = df[(df['Jogo']==row['Jogo']) & (df['Intervalo']==row['Intervalo'])]
                 jogadores_prejuizo = interval_data[interval_data['Resultado']<0].groupby(
@@ -164,6 +161,7 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
                         [{'selector': 'td', 'props': [('font-size', '12px')]},
                          {'selector': 'th', 'props': [('font-size', '12px')]}]
                     ))
+
         elif opcao_prejuizo == "Total do dia":
             prejuizo_total = df.groupby('Jogo').agg({
                 'Quant':'sum',
@@ -171,11 +169,13 @@ if st.session_state.arquivos_enviados and (st.button("Gerar Relatório Final") o
                 'Ganhos':'sum',
                 'Resultado':'sum'
             }).reset_index()
+            prejuizo_total['RTP_%'] = (prejuizo_total['Ganhos'] / prejuizo_total['Gastos'] * 100).round(2).astype(str) + '%'
             prejuizo_total = prejuizo_total[prejuizo_total['Resultado']<0].sort_values('Resultado')
 
             for _, row in prejuizo_total.iterrows():
                 st.markdown(f"<span style='font-size:14px'>### {row['Jogo']}</span>", unsafe_allow_html=True)
                 st.metric(label="Lucro negativo total do dia", value=f"R${-row['Resultado']:,.2f}".replace('.', ','))
+                st.metric(label="RTP", value=row['RTP_%'])
 
                 jogadores_prejuizo = df[(df['Jogo']==row['Jogo']) & (df['Resultado']<0)].groupby(
                     ['Client_ID','Nome','Sobrenome']
