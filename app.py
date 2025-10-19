@@ -103,14 +103,18 @@ if st.session_state.arquivos_enviados:
             for col in ['Gastos', 'Ganhos', 'Resultado']:
                 resumo_hora_display[col] = resumo_hora_display[col].apply(lambda x: f"R${x:,.2f}".replace('.', ','))
             
-            # Mostrar DataFrame estilizado
+            # Mostrar DataFrame estilizado com fonte menor
             st.subheader("📅 Resumo por Hora e Jogo")
             st.dataframe(
-                resumo_hora_display.style.apply(
+                resumo_hora_display.style.set_table_styles(
+                    [{'selector': 'td', 'props': [('font-size', '12px')]},
+                     {'selector': 'th', 'props': [('font-size', '12px')]}]
+                ).apply(
                     lambda x: [color_result(v, resumo_hora['Resultado_num'].iloc[i]) 
                                for i, v in enumerate(x)], 
                     subset=['Resultado']
-                ), use_container_width=True
+                ),
+                use_container_width=True
             )
             
             # Destacar jogos e horários com maior prejuízo
@@ -143,6 +147,27 @@ if st.session_state.arquivos_enviados:
                     jogadores_prejuizo.rename(columns={'Quant':'Rodadas'}, inplace=True)
                     
                     with st.expander("Ver jogadores que contribuíram para o prejuízo"):
-                        st.dataframe(jogadores_prejuizo)
+                        st.dataframe(jogadores_prejuizo.style.set_table_styles(
+                            [{'selector': 'td', 'props': [('font-size', '12px')]},
+                             {'selector': 'th', 'props': [('font-size', '12px')]}]
+                        ))
+            
+            else:
+                st.info("Nenhum prejuízo identificado.")
+            
+            # --- Resumo final automático ---
+            st.subheader("📌 Resumo Final")
+            if not prejuizo.empty:
+                total_jogos_prejuizo = prejuizo['Jogo'].nunique()
+                horario_mais_prejuizo = prejuizo.loc[prejuizo['Resultado_num'].idxmin(), 'Intervalo']
+                lucro_total = resumo_hora['Resultado'].sum()
+                gasto_total = resumo_hora['Gastos'].sum()
+                ganho_total = resumo_hora['Ganhos'].sum()
+
+                st.markdown(f"- **Jogos com prejuízo:** {total_jogos_prejuizo}")
+                st.markdown(f"- **Horário com maior prejuízo:** {horario_mais_prejuizo}")
+                st.markdown(f"- **Total apostado:** R${gasto_total:,.2f}".replace('.', ','))
+                st.markdown(f"- **Total payout:** R${ganho_total:,.2f}".replace('.', ','))
+                st.markdown(f"- **Lucro/Prejuízo final:** R${lucro_total:,.2f}".replace('.', ','))
             else:
                 st.info("Nenhum prejuízo identificado.")
